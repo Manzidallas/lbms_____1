@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Search01Icon, Add01Icon, Edit02Icon, Delete01Icon, BookOpen01Icon, Calendar01Icon, Tag01Icon, Package01Icon } from "hugeicons-react"
+import { LIBRARY_GENRES } from '../constants/genres'
 
 interface Book {
   id: string
@@ -8,6 +9,7 @@ interface Book {
   title: string
   subtitle: string | null
   authors: string[]
+  genre: string | null
   publisher: string | null
   publish_year: number | null
   pages: number | null
@@ -70,6 +72,42 @@ type BookHistoryListResponse = {
   totalPages: number
 }
 
+type LoanHistoryItem = {
+  id: string
+  loan_id: any
+  borrower_id: any
+  copy_id: string | null
+  action: 'borrow' | 'return'
+  message: string
+  meta?: any
+  book?: Book | null
+  createdAt?: string
+}
+
+type LoanHistoryListResponse = {
+  items: LoanHistoryItem[]
+  page: number
+  limit: number
+  total: number
+  totalPages: number
+}
+
+type Collection = {
+  id: string
+  name: string
+  description: string | null
+  books: Array<Book | string>
+  createdAt?: string
+}
+
+type CollectionsListResponse = {
+  items: Collection[]
+  page: number
+  limit: number
+  total: number
+  totalPages: number
+}
+
 const api = axios.create({
   baseURL: 'http://localhost:5000',
 })
@@ -79,6 +117,7 @@ const emptyBookForm = {
   title: '',
   subtitle: '',
   authors: '',
+  genre: '',
   publisher: '',
   publish_year: '',
   pages: '',
@@ -115,12 +154,24 @@ const InventoryManagement = () => {
   const [olResults, setOlResults] = useState<OpenLibrarySearchDoc[]>([])
   const [olSelected, setOlSelected] = useState<OpenLibrarySearchDoc | null>(null)
   const [olCopies, setOlCopies] = useState('1')
+  const [olGenre, setOlGenre] = useState('')
   const [olResolvedIsbn, setOlResolvedIsbn] = useState<string | null>(null)
   const [olIsbnLoading, setOlIsbnLoading] = useState(false)
 
   const [historyItems, setHistoryItems] = useState<BookHistoryItem[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
   const [historyError, setHistoryError] = useState<string | null>(null)
+
+  const [loanHistoryItems, setLoanHistoryItems] = useState<LoanHistoryItem[]>([])
+
+  const [collections, setCollections] = useState<Collection[]>([])
+  const [collectionsLoading, setCollectionsLoading] = useState(false)
+  const [collectionsError, setCollectionsError] = useState<string | null>(null)
+  const [selectedCollection, setSelectedCollection] = useState<Collection | null>(null)
+
+  const [showCreateCollectionModal, setShowCreateCollectionModal] = useState(false)
+  const [collectionForm, setCollectionForm] = useState({ name: '', description: '' })
+  const [selectedBookToAdd, setSelectedBookToAdd] = useState('')
 
   const fetchBooks = async (q: string) => {
     try {
@@ -138,17 +189,97 @@ const InventoryManagement = () => {
     }
   }
 
+  const fetchCollections = async () => {
+    try {
+      setCollectionsLoading(true)
+      setCollectionsError(null)
+      const { data } = await api.get<CollectionsListResponse>('/api/collections', {
+        params: { limit: 100, includeBooks: true },
+      })
+      setCollections(data.items ?? [])
+    } catch {
+      setCollectionsError('Failed to load collections')
+      setCollections([])
+    } finally {
+      setCollectionsLoading(false)
+    }
+  }
+
+  const createCollection = async () => {
+    try {
+      setSaving(true)
+      setSaveError(null)
+
+      const payload = {
+        name: collectionForm.name,
+        description: collectionForm.description || null,
+      }
+
+      await api.post('/api/collections', payload)
+      setShowCreateCollectionModal(false)
+      setCollectionForm({ name: '', description: '' })
+      fetchCollections()
+    } catch (e: any) {
+      setSaveError(e?.response?.data?.message || 'Failed to create collection')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const addBookToCollection = async (collectionId: string, bookId: string) => {
+    try {
+      setSaving(true)
+      setSaveError(null)
+      const { data } = await api.post(`/api/collections/${collectionId}/books`, { book_id: bookId })
+      const updated = data?.collection as Collection | undefined
+      if (updated) {
+        setCollections((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
+        setSelectedCollection((prev) => (prev?.id === updated.id ? updated : prev))
+      } else {
+        fetchCollections()
+      }
+      setSelectedBookToAdd('')
+    } catch (e: any) {
+      setSaveError(e?.response?.data?.message || 'Failed to add book to collection')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const removeBookFromCollection = async (collectionId: string, bookId: string) => {
+    try {
+      setSaving(true)
+      setSaveError(null)
+      const { data } = await api.delete(`/api/collections/${collectionId}/books/${bookId}`)
+      const updated = data?.collection as Collection | undefined
+      if (updated) {
+        setCollections((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
+        setSelectedCollection((prev) => (prev?.id === updated.id ? updated : prev))
+      } else {
+        fetchCollections()
+      }
+    } catch (e: any) {
+      setSaveError(e?.response?.data?.message || 'Failed to remove book from collection')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const fetchHistory = async () => {
     try {
       setHistoryLoading(true)
       setHistoryError(null)
-      const { data } = await api.get<BookHistoryListResponse>('/api/books/history', {
-        params: { limit: 100 },
-      })
-      setHistoryItems(data.items ?? [])
+      const [booksRes, loansRes] = await Promise.all([
+        api.get<BookHistoryListResponse>('/api/books/history', { params: { limit: 100 } }),
+        api.get<LoanHistoryListResponse>('/api/loans/history', { params: { limit: 100 } }),
+      ])
+
+      setHistoryItems(booksRes.data.items ?? [])
+      setLoanHistoryItems(loansRes.data.items ?? [])
     } catch {
       setHistoryError('Failed to load history')
       setHistoryItems([])
+      setLoanHistoryItems([])
     } finally {
       setHistoryLoading(false)
     }
@@ -171,6 +302,9 @@ const InventoryManagement = () => {
   useEffect(() => {
     if (activeTab === 'history') {
       fetchHistory()
+    }
+    if (activeTab === 'collections') {
+      fetchCollections()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab])
@@ -215,6 +349,7 @@ const InventoryManagement = () => {
       title: book.title ?? '',
       subtitle: book.subtitle ?? '',
       authors: (book.authors ?? []).join(', '),
+      genre: book.genre ?? '',
       publisher: book.publisher ?? '',
       publish_year: book.publish_year != null ? String(book.publish_year) : '',
       pages: book.pages != null ? String(book.pages) : '',
@@ -252,6 +387,7 @@ const InventoryManagement = () => {
           .split(',')
           .map((s) => s.trim())
           .filter(Boolean),
+        genre: manualForm.genre || null,
         publisher: manualForm.publisher || null,
         publish_year: manualForm.publish_year ? Number(manualForm.publish_year) : null,
         pages: manualForm.pages ? Number(manualForm.pages) : null,
@@ -290,6 +426,7 @@ const InventoryManagement = () => {
           .split(',')
           .map((s) => s.trim())
           .filter(Boolean),
+        genre: editForm.genre || null,
         publisher: editForm.publisher || null,
         publish_year: editForm.publish_year ? Number(editForm.publish_year) : null,
         pages: editForm.pages ? Number(editForm.pages) : null,
@@ -351,6 +488,7 @@ const InventoryManagement = () => {
     setOlResults([])
     setOlSelected(null)
     setOlCopies('1')
+    setOlGenre('')
     setOlResolvedIsbn(null)
     setOlIsbnLoading(false)
     setShowFetchModal(true)
@@ -419,6 +557,7 @@ const InventoryManagement = () => {
         title: olSelected.title,
         subtitle: null,
         authors: olSelected.author_name ?? [],
+        genre: olGenre || null,
         publisher: (olSelected.publisher ?? [])[0] ?? null,
         publish_year: olSelected.first_publish_year ?? null,
         pages: olSelected.number_of_pages_median ?? null,
@@ -570,26 +709,59 @@ const InventoryManagement = () => {
           ) : null}
           {!historyLoading && !historyError ? (
             <div className="divide-y divide-gray-100">
-              {historyItems.map((h) => {
-                const bookTitle =
-                  h.book_id && typeof h.book_id === 'object' ? (h.book_id as Book).title : null
-                return (
-                  <div key={h.id} className="p-6">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">{h.message}</p>
-                        {bookTitle ? (
-                          <p className="text-xs text-gray-600 mt-1">{bookTitle}</p>
-                        ) : null}
+              {[...historyItems.map((h) => ({ kind: 'book' as const, createdAt: h.createdAt ?? '', item: h })),
+                ...loanHistoryItems.map((h) => ({ kind: 'loan' as const, createdAt: h.createdAt ?? '', item: h })),
+              ]
+                .sort((a, b) => {
+                  const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0
+                  const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0
+                  return tb - ta
+                })
+                .map((row) => {
+                  if (row.kind === 'book') {
+                    const h = row.item as BookHistoryItem
+                    const bookTitle =
+                      h.book_id && typeof h.book_id === 'object' ? (h.book_id as Book).title : null
+                    return (
+                      <div key={`book-${h.id}`} className="p-6">
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <p className="text-sm font-medium text-gray-900">{h.message}</p>
+                            {bookTitle ? <p className="text-xs text-gray-600 mt-1">{bookTitle}</p> : null}
+                          </div>
+                          <div className="text-xs text-gray-500 whitespace-nowrap">
+                            {h.createdAt ? h.createdAt.slice(0, 19).replace('T', ' ') : ''}
+                          </div>
+                        </div>
                       </div>
-                      <div className="text-xs text-gray-500 whitespace-nowrap">
-                        {h.createdAt ? h.createdAt.slice(0, 19).replace('T', ' ') : ''}
+                    )
+                  }
+
+                  const h = row.item as LoanHistoryItem
+                  const borrowerName =
+                    h.borrower_id && typeof h.borrower_id === 'object'
+                      ? `${h.borrower_id.first_name ?? ''} ${h.borrower_id.last_name ?? ''}`.trim()
+                      : null
+                  const bookTitle = h.book?.title ?? null
+                  const label = h.action === 'borrow' ? 'Loan' : 'Return'
+
+                  return (
+                    <div key={`loan-${h.id}`} className="p-6">
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">{label}: {h.message}</p>
+                          {bookTitle ? <p className="text-xs text-gray-600 mt-1">{bookTitle}</p> : null}
+                          {borrowerName ? <p className="text-xs text-gray-600 mt-1">{borrowerName}</p> : null}
+                        </div>
+                        <div className="text-xs text-gray-500 whitespace-nowrap">
+                          {h.createdAt ? h.createdAt.slice(0, 19).replace('T', ' ') : ''}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )
-              })}
-              {historyItems.length === 0 ? (
+                  )
+                })}
+
+              {historyItems.length === 0 && loanHistoryItems.length === 0 ? (
                 <div className="p-6 text-sm text-gray-600">No history yet.</div>
               ) : null}
             </div>
@@ -677,9 +849,140 @@ const InventoryManagement = () => {
       ) : (
         <div className="bg-white rounded-xl border border-gray-200">
           <div className="p-6 border-b border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-900">Collections</h2>
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-lg font-semibold text-gray-900">Collections</h2>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="h-9 px-3 rounded-lg border border-gray-200 text-sm"
+                  onClick={fetchCollections}
+                  disabled={collectionsLoading}
+                >
+                  Refresh
+                </button>
+                <button
+                  type="button"
+                  className="h-9 px-3 rounded-lg bg-black text-white text-sm"
+                  onClick={() => {
+                    setSaveError(null)
+                    setCollectionForm({ name: '', description: '' })
+                    setShowCreateCollectionModal(true)
+                  }}
+                >
+                  Create Collection
+                </button>
+              </div>
+            </div>
           </div>
-          <div className="p-6 text-sm text-gray-600">Coming soon</div>
+          {collectionsLoading ? (
+            <div className="p-6 text-sm text-gray-600">Loading collections...</div>
+          ) : null}
+          {collectionsError ? (
+            <div className="p-6 text-sm text-red-600">{collectionsError}</div>
+          ) : null}
+          {saveError ? (
+            <div className="p-6 pt-0 text-sm text-red-600">{saveError}</div>
+          ) : null}
+
+          {!collectionsLoading && !collectionsError ? (
+            <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-1">
+                <div className="space-y-2">
+                  {collections.map((c) => {
+                    const count = (c.books ?? []).length
+                    const active = selectedCollection?.id === c.id
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        className={`w-full text-left p-4 rounded-xl border transition ${
+                          active ? 'border-black bg-gray-50' : 'border-gray-200 hover:bg-gray-50'
+                        }`}
+                        onClick={() => {
+                          setSelectedCollection(c)
+                          setSelectedBookToAdd('')
+                          setSaveError(null)
+                        }}
+                      >
+                        <p className="text-sm font-semibold text-gray-900">{c.name}</p>
+                        <p className="text-xs text-gray-600 mt-1">{c.description ?? 'No description'}</p>
+                        <p className="text-xs text-gray-500 mt-2">{count} book{count === 1 ? '' : 's'}</p>
+                      </button>
+                    )
+                  })}
+                  {collections.length === 0 ? (
+                    <div className="text-sm text-gray-600">No collections yet. Create one to get started.</div>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="lg:col-span-2">
+                {!selectedCollection ? (
+                  <div className="text-sm text-gray-600">Select a collection to manage its books.</div>
+                ) : (
+                  <div className="rounded-xl border border-gray-200">
+                    <div className="p-4 border-b border-gray-200 flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900">{selectedCollection.name}</p>
+                        <p className="text-xs text-gray-600 mt-1">{selectedCollection.description ?? 'No description'}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={selectedBookToAdd}
+                          onChange={(e) => setSelectedBookToAdd(e.target.value)}
+                          className="h-9 px-3 rounded-lg border border-gray-200 text-sm bg-white"
+                        >
+                          <option value="">Select book...</option>
+                          {books.map((b) => (
+                            <option key={b.id} value={b.id}>
+                              {b.title}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          disabled={!selectedBookToAdd || saving}
+                          onClick={() => addBookToCollection(selectedCollection.id, selectedBookToAdd)}
+                          className="h-9 px-3 rounded-lg bg-black text-white text-sm disabled:opacity-50"
+                        >
+                          Add
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="divide-y divide-gray-100">
+                      {(selectedCollection.books ?? []).map((bk) => {
+                        const book = bk && typeof bk === 'object' ? (bk as Book) : null
+                        const bookId = book?.id ?? String(bk)
+                        const title = book?.title ?? 'Unknown book'
+                        const isbn = book?.isbn ?? ''
+
+                        return (
+                          <div key={bookId} className="p-4 flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-gray-900 truncate">{title}</p>
+                              {isbn ? <p className="text-xs text-gray-600 mt-1">ISBN: {isbn}</p> : null}
+                            </div>
+                            <button
+                              type="button"
+                              disabled={saving}
+                              onClick={() => removeBookFromCollection(selectedCollection.id, bookId)}
+                              className="h-9 px-3 rounded-lg border border-gray-200 text-sm hover:bg-gray-50"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        )
+                      })}
+                      {(selectedCollection.books ?? []).length === 0 ? (
+                        <div className="p-4 text-sm text-gray-600">No books in this collection yet.</div>
+                      ) : null}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : null}
         </div>
       )}
 
@@ -769,6 +1072,18 @@ const InventoryManagement = () => {
                 placeholder="Authors (comma separated)"
                 className="w-full h-11 px-3 rounded-lg border border-gray-200 text-sm"
               />
+              <select
+                value={manualForm.genre}
+                onChange={(e) => setManualForm((p) => ({ ...p, genre: e.target.value }))}
+                className="w-full h-11 px-3 rounded-lg border border-gray-200 text-sm bg-white"
+              >
+                <option value="">Select genre...</option>
+                {LIBRARY_GENRES.filter((g) => g !== 'All').map((g) => (
+                  <option key={g} value={g}>
+                    {g}
+                  </option>
+                ))}
+              </select>
               <input
                 value={manualForm.publisher}
                 onChange={(e) => setManualForm((p) => ({ ...p, publisher: e.target.value }))}
@@ -893,6 +1208,18 @@ const InventoryManagement = () => {
                 placeholder="Authors (comma separated)"
                 className="w-full h-11 px-3 rounded-lg border border-gray-200 text-sm"
               />
+              <select
+                value={editForm.genre}
+                onChange={(e) => setEditForm((p) => ({ ...p, genre: e.target.value }))}
+                className="w-full h-11 px-3 rounded-lg border border-gray-200 text-sm bg-white"
+              >
+                <option value="">Select genre...</option>
+                {LIBRARY_GENRES.filter((g) => g !== 'All').map((g) => (
+                  <option key={g} value={g}>
+                    {g}
+                  </option>
+                ))}
+              </select>
               <input
                 value={editForm.publisher}
                 onChange={(e) => setEditForm((p) => ({ ...p, publisher: e.target.value }))}
@@ -1032,6 +1359,22 @@ const InventoryManagement = () => {
                       />
                     </div>
 
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-gray-700">Genre:</span>
+                      <select
+                        value={olGenre}
+                        onChange={(e) => setOlGenre(e.target.value)}
+                        className="h-10 px-3 rounded-lg border border-gray-200 text-sm bg-white"
+                      >
+                        <option value="">Select...</option>
+                        {LIBRARY_GENRES.filter((g) => g !== 'All').map((g) => (
+                          <option key={g} value={g}>
+                            {g}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
                     <div className="flex gap-2">
                       <button
                         type="button"
@@ -1088,6 +1431,59 @@ const InventoryManagement = () => {
               ) : (
                 <div className="text-sm text-gray-600">Type to search for a book.</div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCreateCollectionModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-semibold text-gray-900">Create Collection</h2>
+              <button
+                onClick={() => setShowCreateCollectionModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ×
+              </button>
+            </div>
+
+            {saveError ? (
+              <div className="mb-3 text-sm text-red-600">{saveError}</div>
+            ) : null}
+
+            <div className="space-y-3">
+              <input
+                value={collectionForm.name}
+                onChange={(e) => setCollectionForm((p) => ({ ...p, name: e.target.value }))}
+                placeholder="Collection name"
+                className="w-full h-11 px-3 rounded-lg border border-gray-200 text-sm"
+              />
+              <textarea
+                value={collectionForm.description}
+                onChange={(e) => setCollectionForm((p) => ({ ...p, description: e.target.value }))}
+                placeholder="Description (optional)"
+                className="w-full min-h-20 px-3 py-2 rounded-lg border border-gray-200 text-sm"
+              />
+            </div>
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowCreateCollectionModal(false)}
+                className="h-10 px-4 rounded-lg border border-gray-200 text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={createCollection}
+                className="h-10 px-4 rounded-lg bg-black text-white text-sm"
+              >
+                {saving ? 'Saving...' : 'Create'}
+              </button>
             </div>
           </div>
         </div>

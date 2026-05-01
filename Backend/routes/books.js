@@ -65,6 +65,7 @@ router.get('/', async (req, res, next) => {
     const q = String(req.query?.q ?? '').trim()
     const isbn = normalizeIsbn(req.query?.isbn)
     const source = normalizeString(req.query?.source)
+    const genre = normalizeString(req.query?.genre)
     const author = normalizeString(req.query?.author)
     const subject = normalizeString(req.query?.subject)
     const publisher = normalizeString(req.query?.publisher)
@@ -78,6 +79,7 @@ router.get('/', async (req, res, next) => {
 
     if (isbn) filter.isbn = isbn
     if (source && ['manual', 'openlibrary'].includes(source)) filter.source = source
+    if (genre) filter.genre = new RegExp(genre.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
     if (language) filter.language = new RegExp(language.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
     if (publisher) filter.publisher = new RegExp(publisher.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
     if (author) filter.authors = new RegExp(author.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
@@ -174,6 +176,7 @@ router.post('/manual', async (req, res, next) => {
       title,
       subtitle: normalizeString(req.body?.subtitle),
       authors: normalizeStringArray(req.body?.authors),
+      genre: normalizeString(req.body?.genre),
       publisher: normalizeString(req.body?.publisher),
       publish_year: req.body?.publish_year != null ? Number(req.body.publish_year) : null,
       pages: req.body?.pages != null ? Number(req.body.pages) : null,
@@ -215,6 +218,7 @@ router.post('/openlibrary', async (req, res, next) => {
       title,
       subtitle: normalizeString(req.body?.subtitle),
       authors: normalizeStringArray(req.body?.authors),
+      genre: normalizeString(req.body?.genre),
       publisher: normalizeString(req.body?.publisher),
       publish_year: req.body?.publish_year != null ? Number(req.body.publish_year) : null,
       pages: req.body?.pages != null ? Number(req.body.pages) : null,
@@ -257,6 +261,7 @@ router.patch('/:id', async (req, res, next) => {
     if (req.body?.title !== undefined) update.title = normalizeString(req.body?.title)
     if (req.body?.subtitle !== undefined) update.subtitle = normalizeString(req.body?.subtitle)
     if (req.body?.authors !== undefined) update.authors = normalizeStringArray(req.body?.authors)
+    if (req.body?.genre !== undefined) update.genre = normalizeString(req.body?.genre)
     if (req.body?.publisher !== undefined) update.publisher = normalizeString(req.body?.publisher)
     if (req.body?.publish_year !== undefined) update.publish_year = req.body?.publish_year != null ? Number(req.body.publish_year) : null
     if (req.body?.pages !== undefined) update.pages = req.body?.pages != null ? Number(req.body.pages) : null

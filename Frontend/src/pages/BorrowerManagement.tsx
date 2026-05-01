@@ -1,18 +1,36 @@
+import axios from 'axios'
 import { useState, useEffect } from "react"
 import { Search01Icon, Add01Icon, Edit02Icon, Delete01Icon, User03Icon, Calendar01Icon, Mail02Icon, AiPhone01Icon, MapPinpoint01Icon, BookOpen01Icon } from "hugeicons-react"
 
 interface Borrower {
   id: string
-  name: string
+  first_name: string
+  last_name: string
   email: string
   phone: string
-  address: string
-  membershipDate: string
+  membership_id: string
   status: 'active' | 'inactive' | 'suspended'
-  totalBorrowed: number
-  currentBorrowed: number
-  overdueBooks: number
+  createdAt?: string
 }
+
+type Book = {
+  id: string
+  isbn: string
+  title: string
+  authors: string[]
+}
+
+type BorrowersListResponse = {
+  items: Borrower[]
+  page: number
+  limit: number
+  total: number
+  totalPages: number
+}
+
+const api = axios.create({
+  baseURL: 'http://localhost:5000',
+})
 
 interface BorrowingHistory {
   id: string
@@ -24,6 +42,24 @@ interface BorrowingHistory {
   status: 'borrowed' | 'returned' | 'overdue'
 }
 
+type LoanItem = {
+  id: string
+  copy_id: string
+  borrower_id: Borrower | string
+  borrow_date: string
+  due_date: string
+  return_date: string | null
+  book: Book | null
+}
+
+type LoansListResponse = {
+  items: LoanItem[]
+  page: number
+  limit: number
+  total: number
+  totalPages: number
+}
+
 const BorrowerManagement = () => {
   const [borrowers, setBorrowers] = useState<Borrower[]>([])
   const [searchTerm, setSearchTerm] = useState('')
@@ -31,89 +67,129 @@ const BorrowerManagement = () => {
   const [borrowingHistory, setBorrowingHistory] = useState<BorrowingHistory[]>([])
   const [activeTab, setActiveTab] = useState<'members' | 'loans'>('members')
 
-  // Mock data
+  const [loadingBorrowers, setLoadingBorrowers] = useState(false)
+  const [borrowersError, setBorrowersError] = useState<string | null>(null)
+
+  const [showRegisterModal, setShowRegisterModal] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [registerForm, setRegisterForm] = useState({
+    first_name: '',
+    last_name: '',
+    email: '',
+    phone: '',
+  })
+
+  const [loans, setLoans] = useState<LoanItem[]>([])
+  const [loadingLoans, setLoadingLoans] = useState(false)
+  const [loansError, setLoansError] = useState<string | null>(null)
+
+  const fetchBorrowers = async (q: string) => {
+    try {
+      setLoadingBorrowers(true)
+      setBorrowersError(null)
+      const { data } = await api.get<BorrowersListResponse>('/api/borrowers', {
+        params: q.trim() ? { q: q.trim(), limit: 100 } : { limit: 100 },
+      })
+      setBorrowers(data.items ?? [])
+    } catch {
+      setBorrowersError('Failed to load members')
+      setBorrowers([])
+    } finally {
+      setLoadingBorrowers(false)
+    }
+  }
+
+  const fetchLoans = async () => {
+    try {
+      setLoadingLoans(true)
+      setLoansError(null)
+      const { data } = await api.get<LoansListResponse>('/api/loans', {
+        params: { limit: 100 },
+      })
+      setLoans(data.items ?? [])
+    } catch {
+      setLoansError('Failed to load loans')
+      setLoans([])
+    } finally {
+      setLoadingLoans(false)
+    }
+  }
+
   useEffect(() => {
-    const mockBorrowers: Borrower[] = [
-      {
-        id: '1',
-        name: 'John Smith',
-        email: 'john.smith@email.com',
-        phone: '+1 234-567-8900',
-        address: '123 Main St, City, State',
-        membershipDate: '2023-01-15',
-        status: 'active',
-        totalBorrowed: 25,
-        currentBorrowed: 3,
-        overdueBooks: 0
-      },
-      {
-        id: '2',
-        name: 'Sarah Johnson',
-        email: 'sarah.j@email.com',
-        phone: '+1 234-567-8901',
-        address: '456 Oak Ave, City, State',
-        membershipDate: '2023-03-20',
-        status: 'active',
-        totalBorrowed: 18,
-        currentBorrowed: 2,
-        overdueBooks: 1
-      },
-      {
-        id: '3',
-        name: 'Michael Davis',
-        email: 'm.davis@email.com',
-        phone: '+1 234-567-8902',
-        address: '789 Pine Rd, City, State',
-        membershipDate: '2022-11-10',
-        status: 'suspended',
-        totalBorrowed: 42,
-        currentBorrowed: 5,
-        overdueBooks: 3
-      }
-    ]
-    setBorrowers(mockBorrowers)
+    const t = setTimeout(() => {
+      fetchBorrowers(searchTerm)
+    }, 250)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm])
+
+  useEffect(() => {
+    fetchBorrowers('')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
-    if (selectedBorrower) {
-      const mockHistory: BorrowingHistory[] = [
-        {
-          id: '1',
-          bookTitle: 'The Great Gatsby',
-          bookId: 'ISBN:9780743273565',
-          borrowDate: '2024-03-01',
-          dueDate: '2024-03-15',
-          returnDate: '2024-03-14',
-          status: 'returned'
-        },
-        {
-          id: '2',
-          bookTitle: 'Atomic Habits',
-          bookId: 'ISBN:9780735211292',
-          borrowDate: '2024-03-10',
-          dueDate: '2024-03-24',
-          returnDate: null,
-          status: 'borrowed'
-        },
-        {
-          id: '3',
-          bookTitle: 'The Hobbit',
-          bookId: 'ISBN:9780345339683',
-          borrowDate: '2024-02-15',
-          dueDate: '2024-02-29',
-          returnDate: null,
-          status: 'overdue'
-        }
-      ]
-      setBorrowingHistory(mockHistory)
+    if (activeTab === 'loans') {
+      fetchLoans()
     }
-  }, [selectedBorrower])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab])
 
-  const filteredBorrowers = borrowers.filter(borrower =>
-    borrower.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    borrower.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    borrower.phone.includes(searchTerm)
-  )
+  useEffect(() => {
+    if (!selectedBorrower) {
+      setBorrowingHistory([])
+      return
+    }
+
+    const filtered = loans.filter((l) => {
+      if (!l.borrower_id || typeof l.borrower_id !== 'object') return false
+      return (l.borrower_id as Borrower).id === selectedBorrower.id
+    })
+
+    const mapped: BorrowingHistory[] = filtered.map((l) => {
+      const isReturned = Boolean(l.return_date)
+      const isOverdue = !isReturned && new Date(l.due_date).getTime() < Date.now()
+      const status: BorrowingHistory['status'] = isReturned ? 'returned' : isOverdue ? 'overdue' : 'borrowed'
+
+      return {
+        id: l.id,
+        bookTitle: l.book?.title ?? 'Unknown book',
+        bookId: l.book?.isbn ?? l.copy_id,
+        borrowDate: String(l.borrow_date).slice(0, 10),
+        dueDate: String(l.due_date).slice(0, 10),
+        returnDate: l.return_date ? String(l.return_date).slice(0, 10) : null,
+        status,
+      }
+    })
+
+    setBorrowingHistory(mapped)
+  }, [selectedBorrower, loans])
+
+  const filteredBorrowers = borrowers
+
+  const registerMember = async () => {
+    try {
+      setSaving(true)
+      setSaveError(null)
+
+      const payload = {
+        first_name: registerForm.first_name,
+        last_name: registerForm.last_name,
+        email: registerForm.email,
+        phone: registerForm.phone,
+      }
+
+      await api.post('/api/borrowers', payload)
+      setShowRegisterModal(false)
+      setRegisterForm({ first_name: '', last_name: '', email: '', phone: '' })
+      fetchBorrowers(searchTerm)
+    } catch (e: any) {
+      setSaveError(e?.response?.data?.message || 'Failed to register member')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -131,6 +207,12 @@ const BorrowerManagement = () => {
       case 'overdue': return 'bg-red-100 text-red-800'
       default: return 'bg-gray-100 text-gray-800'
     }
+  }
+
+  const loanStatus = (l: LoanItem) => {
+    const isReturned = Boolean(l.return_date)
+    const isOverdue = !isReturned && new Date(l.due_date).getTime() < Date.now()
+    return isReturned ? 'returned' : isOverdue ? 'overdue' : 'borrowed'
   }
 
   return (
@@ -155,7 +237,11 @@ const BorrowerManagement = () => {
           </div>
           <button
             type="button"
-            onClick={() => {}}
+            onClick={() => {
+              setSaveError(null)
+              setRegisterForm({ first_name: '', last_name: '', email: '', phone: '' })
+              setShowRegisterModal(true)
+            }}
             className="h-12 px-5 rounded-xl bg-black text-white text-sm font-medium flex items-center gap-2 hover:bg-gray-800 transition focus:outline-none focus:ring-2 focus:ring-gray-400"
           >
             <Add01Icon size={18} />
@@ -201,6 +287,12 @@ const BorrowerManagement = () => {
           <div className="p-6 border-b border-gray-200">
             <h2 className="text-lg font-semibold text-gray-900">Members</h2>
           </div>
+          {loadingBorrowers ? (
+            <div className="p-6 text-sm text-gray-600">Loading members...</div>
+          ) : null}
+          {borrowersError ? (
+            <div className="p-6 text-sm text-red-600">{borrowersError}</div>
+          ) : null}
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-50">
@@ -212,10 +304,10 @@ const BorrowerManagement = () => {
                     Contact
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
+                    Membership ID
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Loans
+                    Status
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Actions
@@ -231,8 +323,10 @@ const BorrowerManagement = () => {
                           <User03Icon size={20} className="text-gray-500" />
                         </div>
                         <div className="ml-4">
-                          <div className="text-sm font-medium text-gray-900">{borrower.name}</div>
-                          <div className="text-sm text-gray-500">Member since {borrower.membershipDate}</div>
+                          <div className="text-sm font-medium text-gray-900">{borrower.first_name} {borrower.last_name}</div>
+                          {borrower.createdAt ? (
+                            <div className="text-sm text-gray-500">Registered {borrower.createdAt.slice(0, 10)}</div>
+                          ) : null}
                         </div>
                       </div>
                     </td>
@@ -241,17 +335,12 @@ const BorrowerManagement = () => {
                       <div className="text-sm text-gray-500">{borrower.phone}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900">{borrower.membership_id}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(borrower.status)}`}>
                         {borrower.status}
                       </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">
-                        {borrower.currentBorrowed} / {borrower.totalBorrowed}
-                      </div>
-                      {borrower.overdueBooks > 0 && (
-                        <div className="text-sm text-red-600">{borrower.overdueBooks} overdue</div>
-                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <button
@@ -279,40 +368,55 @@ const BorrowerManagement = () => {
             <h2 className="text-lg font-semibold text-gray-900">Loan Records</h2>
           </div>
           <div className="p-6">
-            {!selectedBorrower ? (
-              <div className="text-sm text-gray-600">Select a member to view their loan records.</div>
-            ) : (
+            {loadingLoans ? (
+              <div className="text-sm text-gray-600">Loading loans...</div>
+            ) : null}
+            {loansError ? (
+              <div className="text-sm text-red-600">{loansError}</div>
+            ) : null}
+            {!loadingLoans && !loansError ? (
               <div className="space-y-4">
-                {borrowingHistory.map((history) => (
-                  <div key={history.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-16 bg-gray-200 rounded flex items-center justify-center">
-                        <BookOpen01Icon size={20} className="text-gray-500" />
-                      </div>
-                      <div>
-                        <p className="font-medium text-gray-900">{history.bookTitle}</p>
-                        <p className="text-sm text-gray-500">{history.bookId}</p>
-                        <div className="flex items-center gap-4 mt-1">
-                          <span className="text-xs text-gray-500">Borrowed: {history.borrowDate}</span>
-                          <span className="text-xs text-gray-500">Due: {history.dueDate}</span>
+                {loans.map((l) => {
+                  const borrowerName =
+                    l.borrower_id && typeof l.borrower_id === 'object'
+                      ? `${(l.borrower_id as Borrower).first_name} ${(l.borrower_id as Borrower).last_name}`
+                      : 'Unknown borrower'
+                  const status = loanStatus(l)
+                  const bookTitle = l.book?.title ?? 'Unknown book'
+                  const bookId = l.book?.isbn ?? l.copy_id
+
+                  return (
+                    <div key={l.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-16 bg-gray-200 rounded flex items-center justify-center">
+                          <BookOpen01Icon size={20} className="text-gray-500" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-gray-900">{bookTitle}</p>
+                          <p className="text-sm text-gray-600 mt-0.5">{borrowerName}</p>
+                          <p className="text-sm text-gray-500">{bookId}</p>
+                          <div className="flex items-center gap-4 mt-1">
+                            <span className="text-xs text-gray-500">Borrowed: {String(l.borrow_date).slice(0, 10)}</span>
+                            <span className="text-xs text-gray-500">Due: {String(l.due_date).slice(0, 10)}</span>
+                          </div>
                         </div>
                       </div>
+                      <div className="text-right">
+                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getHistoryStatusColor(status)}`}>
+                          {status}
+                        </span>
+                        {l.return_date ? (
+                          <p className="text-xs text-gray-500 mt-1">Returned: {String(l.return_date).slice(0, 10)}</p>
+                        ) : null}
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getHistoryStatusColor(history.status)}`}>
-                        {history.status}
-                      </span>
-                      {history.returnDate && (
-                        <p className="text-xs text-gray-500 mt-1">Returned: {history.returnDate}</p>
-                      )}
-                    </div>
-                  </div>
-                ))}
-                {borrowingHistory.length === 0 ? (
-                  <div className="text-sm text-gray-600">No loan records for this member.</div>
+                  )
+                })}
+                {loans.length === 0 ? (
+                  <div className="text-sm text-gray-600">No loan records yet.</div>
                 ) : null}
               </div>
-            )}
+            ) : null}
           </div>
         </div>
       )}
@@ -349,7 +453,7 @@ const BorrowerManagement = () => {
                     </div>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-gray-900">{selectedBorrower.name}</p>
+                    <p className="text-sm font-medium text-gray-900">{selectedBorrower.first_name} {selectedBorrower.last_name}</p>
                     <span className={`inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(selectedBorrower.status)}`}>
                       {selectedBorrower.status}
                     </span>
@@ -364,12 +468,8 @@ const BorrowerManagement = () => {
                       {selectedBorrower.phone}
                     </div>
                     <div className="flex items-center gap-2 text-sm text-gray-600">
-                      <MapPinpoint01Icon size={16} />
-                      {selectedBorrower.address}
-                    </div>
-                    <div className="flex items-center gap-2 text-sm text-gray-600">
                       <Calendar01Icon size={16} />
-                      Member since {selectedBorrower.membershipDate}
+                      Membership ID {selectedBorrower.membership_id}
                     </div>
                   </div>
                 </div>
@@ -417,6 +517,81 @@ const BorrowerManagement = () => {
           </div>
         </div>
       )}
+
+      {showRegisterModal ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          onMouseDown={(e) => {
+            if (e.currentTarget === e.target) setShowRegisterModal(false)
+          }}
+        >
+          <div className="w-full max-w-md rounded-xl bg-white border border-gray-200 overflow-hidden">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">Register Member</h3>
+              <button
+                type="button"
+                className="text-gray-400 hover:text-gray-600"
+                onClick={() => setShowRegisterModal(false)}
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="p-6">
+              {saveError ? <div className="mb-3 text-sm text-red-600">{saveError}</div> : null}
+
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    value={registerForm.first_name}
+                    onChange={(e) => setRegisterForm((p) => ({ ...p, first_name: e.target.value }))}
+                    placeholder="First name"
+                    className="w-full h-11 px-3 rounded-lg border border-gray-200 text-sm"
+                  />
+                  <input
+                    value={registerForm.last_name}
+                    onChange={(e) => setRegisterForm((p) => ({ ...p, last_name: e.target.value }))}
+                    placeholder="Last name"
+                    className="w-full h-11 px-3 rounded-lg border border-gray-200 text-sm"
+                  />
+                </div>
+                <input
+                  value={registerForm.email}
+                  onChange={(e) => setRegisterForm((p) => ({ ...p, email: e.target.value }))}
+                  placeholder="Email"
+                  className="w-full h-11 px-3 rounded-lg border border-gray-200 text-sm"
+                />
+                <input
+                  value={registerForm.phone}
+                  onChange={(e) => setRegisterForm((p) => ({ ...p, phone: e.target.value }))}
+                  placeholder="Phone"
+                  className="w-full h-11 px-3 rounded-lg border border-gray-200 text-sm"
+                />
+              </div>
+
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowRegisterModal(false)}
+                  className="h-10 px-4 rounded-lg border border-gray-200 text-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={registerMember}
+                  className="h-10 px-4 rounded-lg bg-black text-white text-sm"
+                >
+                  {saving ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
