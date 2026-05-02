@@ -1,6 +1,7 @@
 const express = require('express')
 const Book = require('../models/Book')
 const BookHistory = require('../models/BookHistory')
+const LoanHistory = require('../models/LoanHistory')
 
 const router = express.Router()
 
@@ -48,6 +49,10 @@ function publicHistory(item) {
   return item.toJSON()
 }
 
+function isValidObjectId(v) {
+  return typeof v === 'string' && /^[0-9a-fA-F]{24}$/.test(v)
+}
+
 async function logHistory({ bookId, action, message, meta }) {
   try {
     await BookHistory.create({
@@ -59,6 +64,54 @@ async function logHistory({ bookId, action, message, meta }) {
   } catch {
   }
 }
+
+router.get('/popular', async (req, res, next) => {
+  try {
+    const limit = parsePositiveInt(req.query?.limit, 5)
+
+    const rows = await LoanHistory.aggregate([
+      { $match: { action: 'borrow' } },
+      { $group: { _id: '$copy_id', borrowCount: { $sum: 1 } } },
+      { $sort: { borrowCount: -1 } },
+      { $limit: limit },
+    ])
+
+    const keys = rows.map((r) => String(r._id ?? '')).filter(Boolean)
+    const ids = keys.filter((k) => isValidObjectId(k))
+    const isbns = keys
+      .filter((k) => !isValidObjectId(k))
+      .map((k) => normalizeIsbn(k))
+      .filter(Boolean)
+
+    const books = await Book.find({
+      $or: [
+        ...(ids.length ? [{ _id: { $in: ids } }] : []),
+        ...(isbns.length ? [{ isbn: { $in: isbns } }] : []),
+      ],
+    })
+
+    const byId = new Map(books.map((b) => [String(b._id), b]))
+    const byIsbn = new Map(books.map((b) => [String(b.isbn), b]))
+
+    const items = rows
+      .map((r) => {
+        const key = String(r._id ?? '')
+        if (!key) return null
+        const borrowCount = Number(r.borrowCount ?? 0)
+
+        const book = isValidObjectId(key)
+          ? byId.get(key) ?? null
+          : byIsbn.get(normalizeIsbn(key)) ?? null
+
+        return book ? { book: publicBook(book), borrowCount } : null
+      })
+      .filter(Boolean)
+
+    res.json({ items })
+  } catch (err) {
+    next(err)
+  }
+})
 
 router.get('/', async (req, res, next) => {
   try {

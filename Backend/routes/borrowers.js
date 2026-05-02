@@ -1,5 +1,6 @@
 const express = require('express')
 const Borrower = require('../models/Borrower')
+const BorrowerHistory = require('../models/BorrowerHistory')
 
 const router = express.Router()
 
@@ -23,6 +24,22 @@ function normalizeEmail(v) {
 
 function publicBorrower(b) {
   return b.toJSON()
+}
+
+function publicHistory(item) {
+  return item.toJSON()
+}
+
+async function logHistory({ borrowerId, action, message, meta }) {
+  try {
+    await BorrowerHistory.create({
+      borrower_id: borrowerId ?? null,
+      action,
+      message,
+      meta: meta ?? null,
+    })
+  } catch {
+  }
 }
 
 async function generateMembershipId() {
@@ -81,6 +98,40 @@ router.get('/', async (req, res, next) => {
   }
 })
 
+router.get('/history', async (req, res, next) => {
+  try {
+    const borrower_id = normalizeString(req.query?.borrower_id)
+    const action = normalizeString(req.query?.action)
+
+    const page = parsePositiveInt(req.query?.page, 1)
+    const limit = parsePositiveInt(req.query?.limit, 50)
+    const skip = (page - 1) * limit
+
+    const filter = {}
+    if (borrower_id) filter.borrower_id = borrower_id
+    if (action && ['create', 'update', 'delete'].includes(action)) filter.action = action
+
+    const [items, total] = await Promise.all([
+      BorrowerHistory.find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('borrower_id'),
+      BorrowerHistory.countDocuments(filter),
+    ])
+
+    res.json({
+      items: items.map(publicHistory),
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
 router.get('/:id', async (req, res, next) => {
   try {
     const id = String(req.params?.id || '').trim()
@@ -116,6 +167,13 @@ router.post('/', async (req, res, next) => {
       status: 'active',
     })
 
+    await logHistory({
+      borrowerId: created._id,
+      action: 'create',
+      message: 'Borrower created',
+      meta: { membership_id: created.membership_id },
+    })
+
     res.status(201).json({ borrower: publicBorrower(created) })
   } catch (err) {
     if (err && err.code === 11000) {
@@ -129,6 +187,9 @@ router.patch('/:id', async (req, res, next) => {
   try {
     const id = String(req.params?.id || '').trim()
 
+    const existing = await Borrower.findById(id)
+    if (!existing) return res.status(404).json({ message: 'Borrower not found' })
+
     const update = {}
 
     if (req.body?.first_name !== undefined) update.first_name = normalizeString(req.body?.first_name)
@@ -139,6 +200,13 @@ router.patch('/:id', async (req, res, next) => {
 
     const updated = await Borrower.findByIdAndUpdate(id, { $set: update }, { new: true, runValidators: true })
     if (!updated) return res.status(404).json({ message: 'Borrower not found' })
+
+    await logHistory({
+      borrowerId: updated._id,
+      action: 'update',
+      message: 'Borrower updated',
+      meta: { before: existing.toJSON(), after: updated.toJSON() },
+    })
 
     res.json({ borrower: publicBorrower(updated) })
   } catch (err) {
@@ -153,6 +221,13 @@ router.delete('/:id', async (req, res, next) => {
     const id = String(req.params?.id || '').trim()
     const deleted = await Borrower.findByIdAndDelete(id)
     if (!deleted) return res.status(404).json({ message: 'Borrower not found' })
+
+    await logHistory({
+      borrowerId: deleted._id,
+      action: 'delete',
+      message: 'Borrower deleted',
+      meta: { borrower: deleted.toJSON() },
+    })
     res.json({ ok: true })
   } catch (err) {
     if (err?.name === 'CastError') return res.status(400).json({ message: 'Invalid id' })
