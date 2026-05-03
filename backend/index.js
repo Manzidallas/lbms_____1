@@ -1,5 +1,22 @@
+const dns = require('dns')
 const express = require('express')
 const mongoose = require('mongoose')
+
+// Node on Windows often gets querySrv ECONNREFUSED for mongodb+srv while nslookup works.
+// Override via NODE_DNS_SERVERS=8.8.8.8,1.1.1.1 or set SKIP_WIN_MONGO_DNS_FIX=1 to disable.
+const skipDnsFix = process.env.SKIP_WIN_MONGO_DNS_FIX === '1'
+const customServers = process.env.NODE_DNS_SERVERS
+if (customServers) {
+  dns.setServers(
+    customServers.split(',').map((s) => s.trim()).filter(Boolean)
+  )
+} else if (
+  process.platform === 'win32' &&
+  process.env.NODE_ENV !== 'production' &&
+  !skipDnsFix
+) {
+  dns.setServers(['8.8.8.8', '1.1.1.1'])
+}
 const session = require('express-session')
 const cors = require('cors')
 
@@ -10,8 +27,8 @@ const loansRoutes = require('./routes/loans')
 const collectionsRoutes = require('./routes/collections')
 const statsRoutes = require('./routes/stats')
 
-const PORT = process.env.PORT || 5000 /// uzIyvyzRVDApu8YZ
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://elsie:uzIyvyzRVDApu8YZ@application.nhfetpd.mongodb.net/?appName=application/lbms'
+const PORT = process.env.PORT || 5000
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://elsie:itlqZBrHiTsQA3dM@application.nhfetpd.mongodb.net/?appName=application/lbmss'
 const SESSION_SECRET = process.env.SESSION_SECRET || 'dev-secret-change-me'
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'http://localhost:5173'
 
