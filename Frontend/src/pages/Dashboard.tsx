@@ -8,11 +8,7 @@ import {
 } from 'hugeicons-react'
 import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
-import axios from 'axios'
-
-const api = axios.create({
-  baseURL: 'http://localhost:5000',
-})
+import { api } from '../lib/api'
 
 type PopularBookRow = {
   book: {

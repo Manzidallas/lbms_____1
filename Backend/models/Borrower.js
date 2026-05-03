@@ -7,6 +7,8 @@ const borrowerSchema = new mongoose.Schema(
     email: { type: String, required: true, trim: true, lowercase: true, unique: true },
     phone: { type: String, required: true, trim: true },
     membership_id: { type: String, required: true, trim: true, unique: true },
+    gender: { type: String, enum: ['male', 'female', 'other'], required: false },
+    address: { type: String, default: null, trim: true },
     status: { type: String, enum: ['active', 'inactive', 'suspended'], default: 'active' },
   },
   { timestamps: true }

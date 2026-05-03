@@ -1,6 +1,6 @@
-import axios from 'axios'
 import { useState, useEffect } from "react"
-import { Search01Icon, Add01Icon, Edit02Icon, Delete01Icon, User03Icon, Calendar01Icon, Mail02Icon, AiPhone01Icon, MapPinpoint01Icon, BookOpen01Icon } from "hugeicons-react"
+import { Search01Icon, Add01Icon, Edit02Icon, Delete01Icon, User03Icon, Calendar01Icon, Mail02Icon, AiPhone01Icon, BookOpen01Icon } from "hugeicons-react"
+import { api } from '../lib/api'
 
 interface Borrower {
   id: string
@@ -9,6 +9,8 @@ interface Borrower {
   email: string
   phone: string
   membership_id: string
+  gender?: 'male' | 'female' | 'other'
+  address?: string | null
   status: 'active' | 'inactive' | 'suspended'
   createdAt?: string
 }
@@ -27,10 +29,6 @@ type BorrowersListResponse = {
   total: number
   totalPages: number
 }
-
-const api = axios.create({
-  baseURL: 'http://localhost:5000',
-})
 
 interface BorrowingHistory {
   id: string
@@ -65,6 +63,8 @@ const BorrowerManagement = () => {
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedBorrower, setSelectedBorrower] = useState<Borrower | null>(null)
   const [borrowingHistory, setBorrowingHistory] = useState<BorrowingHistory[]>([])
+  const [borrowerActiveLoans, setBorrowerActiveLoans] = useState<any[]>([])
+  const [borrowerLoansLoading, setBorrowerLoansLoading] = useState(false)
   const [activeTab, setActiveTab] = useState<'members' | 'loans'>('members')
 
   const [loadingBorrowers, setLoadingBorrowers] = useState(false)
@@ -78,7 +78,27 @@ const BorrowerManagement = () => {
     last_name: '',
     email: '',
     phone: '',
+    gender: '',
   })
+
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [editingBorrower, setEditingBorrower] = useState<Borrower | null>(null)
+  const [editSaving, setEditSaving] = useState(false)
+  const [editError, setEditError] = useState<string | null>(null)
+  const [editForm, setEditForm] = useState({
+    first_name: '',
+    last_name: '',
+    email: '',
+    phone: '',
+    gender: '',
+    status: 'active' as Borrower['status'],
+    address: '',
+  })
+
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deletingBorrower, setDeletingBorrower] = useState<Borrower | null>(null)
+  const [deleteSaving, setDeleteSaving] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const [loans, setLoans] = useState<LoanItem[]>([])
   const [loadingLoans, setLoadingLoans] = useState(false)
@@ -100,6 +120,67 @@ const BorrowerManagement = () => {
     }
   }
 
+  const openEditBorrower = (b: Borrower) => {
+    setEditError(null)
+    setEditingBorrower(b)
+    setEditForm({
+      first_name: b.first_name ?? '',
+      last_name: b.last_name ?? '',
+      email: b.email ?? '',
+      phone: b.phone ?? '',
+      gender: b.gender ?? '',
+      status: b.status ?? 'active',
+      address: (b.address ?? '') as string,
+    })
+    setShowEditModal(true)
+  }
+
+  const saveBorrowerEdits = async () => {
+    if (!editingBorrower) return
+    try {
+      setEditSaving(true)
+      setEditError(null)
+      await api.patch(`/api/borrowers/${editingBorrower.id}`, {
+        first_name: editForm.first_name,
+        last_name: editForm.last_name,
+        email: editForm.email,
+        phone: editForm.phone,
+        gender: editForm.gender || undefined,
+        status: editForm.status,
+        address: editForm.address || undefined,
+      })
+      setShowEditModal(false)
+      setEditingBorrower(null)
+      fetchBorrowers(searchTerm)
+    } catch (e: any) {
+      setEditError(e?.response?.data?.message || 'Failed to update borrower')
+    } finally {
+      setEditSaving(false)
+    }
+  }
+
+  const openDeleteBorrower = (b: Borrower) => {
+    setDeleteError(null)
+    setDeletingBorrower(b)
+    setShowDeleteConfirm(true)
+  }
+
+  const confirmDeleteBorrower = async () => {
+    if (!deletingBorrower) return
+    try {
+      setDeleteSaving(true)
+      setDeleteError(null)
+      await api.delete(`/api/borrowers/${deletingBorrower.id}`)
+      setShowDeleteConfirm(false)
+      setDeletingBorrower(null)
+      fetchBorrowers(searchTerm)
+    } catch (e: any) {
+      setDeleteError(e?.response?.data?.message || 'Failed to delete borrower')
+    } finally {
+      setDeleteSaving(false)
+    }
+  }
+
   const fetchLoans = async () => {
     try {
       setLoadingLoans(true)
@@ -113,6 +194,27 @@ const BorrowerManagement = () => {
       setLoans([])
     } finally {
       setLoadingLoans(false)
+    }
+  }
+
+  const fetchBorrowerActiveLoans = async (borrowerId: string) => {
+    try {
+      setBorrowerLoansLoading(true)
+      const { data } = await api.get(`/api/borrowers/${borrowerId}/loans`)
+      setBorrowerActiveLoans(data.items ?? [])
+    } catch {
+      setBorrowerActiveLoans([])
+    } finally {
+      setBorrowerLoansLoading(false)
+    }
+  }
+
+  const fetchBorrowerAllLoans = async (borrowerId: string) => {
+    try {
+      const { data } = await api.get(`/api/borrowers/${borrowerId}/loans/all`)
+      return (data.items ?? []) as LoanItem[]
+    } catch {
+      return [] as LoanItem[]
     }
   }
 
@@ -139,32 +241,36 @@ const BorrowerManagement = () => {
   useEffect(() => {
     if (!selectedBorrower) {
       setBorrowingHistory([])
+      setBorrowerActiveLoans([])
       return
     }
 
-    const filtered = loans.filter((l) => {
-      if (!l.borrower_id || typeof l.borrower_id !== 'object') return false
-      return (l.borrower_id as Borrower).id === selectedBorrower.id
-    })
+    const run = async () => {
+      const all = await fetchBorrowerAllLoans(selectedBorrower.id)
 
-    const mapped: BorrowingHistory[] = filtered.map((l) => {
-      const isReturned = Boolean(l.return_date)
-      const isOverdue = !isReturned && new Date(l.due_date).getTime() < Date.now()
-      const status: BorrowingHistory['status'] = isReturned ? 'returned' : isOverdue ? 'overdue' : 'borrowed'
+      const mapped: BorrowingHistory[] = all.map((l) => {
+        const isReturned = Boolean(l.return_date)
+        const isOverdue = !isReturned && new Date(l.due_date).getTime() < Date.now()
+        const status: BorrowingHistory['status'] = isReturned ? 'returned' : isOverdue ? 'overdue' : 'borrowed'
 
-      return {
-        id: l.id,
-        bookTitle: l.book?.title ?? 'Unknown book',
-        bookId: l.book?.isbn ?? l.copy_id,
-        borrowDate: String(l.borrow_date).slice(0, 10),
-        dueDate: String(l.due_date).slice(0, 10),
-        returnDate: l.return_date ? String(l.return_date).slice(0, 10) : null,
-        status,
-      }
-    })
+        return {
+          id: l.id,
+          bookTitle: l.book?.title ?? 'Unknown book',
+          bookId: l.book?.isbn ?? l.copy_id,
+          borrowDate: String(l.borrow_date).slice(0, 10),
+          dueDate: String(l.due_date).slice(0, 10),
+          returnDate: l.return_date ? String(l.return_date).slice(0, 10) : null,
+          status,
+        }
+      })
 
-    setBorrowingHistory(mapped)
-  }, [selectedBorrower, loans])
+      setBorrowingHistory(mapped)
+      fetchBorrowerActiveLoans(selectedBorrower.id)
+    }
+
+    run()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBorrower])
 
   const filteredBorrowers = borrowers
 
@@ -178,16 +284,44 @@ const BorrowerManagement = () => {
         last_name: registerForm.last_name,
         email: registerForm.email,
         phone: registerForm.phone,
+        gender: registerForm.gender || undefined,
       }
 
       await api.post('/api/borrowers', payload)
       setShowRegisterModal(false)
-      setRegisterForm({ first_name: '', last_name: '', email: '', phone: '' })
+      setRegisterForm({ first_name: '', last_name: '', email: '', phone: '', gender: '' })
       fetchBorrowers(searchTerm)
     } catch (e: any) {
       setSaveError(e?.response?.data?.message || 'Failed to register member')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const returnBook = async (loanId: string) => {
+    try {
+      await api.patch(`/api/loans/${loanId}`, { return_date: new Date().toISOString() })
+      if (selectedBorrower) {
+        fetchBorrowerActiveLoans(selectedBorrower.id)
+        const all = await fetchBorrowerAllLoans(selectedBorrower.id)
+        const mapped: BorrowingHistory[] = all.map((l) => {
+          const isReturned = Boolean(l.return_date)
+          const isOverdue = !isReturned && new Date(l.due_date).getTime() < Date.now()
+          const status: BorrowingHistory['status'] = isReturned ? 'returned' : isOverdue ? 'overdue' : 'borrowed'
+          return {
+            id: l.id,
+            bookTitle: l.book?.title ?? 'Unknown book',
+            bookId: l.book?.isbn ?? l.copy_id,
+            borrowDate: String(l.borrow_date).slice(0, 10),
+            dueDate: String(l.due_date).slice(0, 10),
+            returnDate: l.return_date ? String(l.return_date).slice(0, 10) : null,
+            status,
+          }
+        })
+        setBorrowingHistory(mapped)
+      }
+    } catch {
+      // Optionally show error
     }
   }
 
@@ -239,7 +373,7 @@ const BorrowerManagement = () => {
             type="button"
             onClick={() => {
               setSaveError(null)
-              setRegisterForm({ first_name: '', last_name: '', email: '', phone: '' })
+              setRegisterForm({ first_name: '', last_name: '', email: '', phone: '', gender: '' })
               setShowRegisterModal(true)
             }}
             className="h-12 px-5 rounded-xl bg-black text-white text-sm font-medium flex items-center gap-2 hover:bg-gray-800 transition focus:outline-none focus:ring-2 focus:ring-gray-400"
@@ -272,7 +406,7 @@ const BorrowerManagement = () => {
           Members
         </div>
         <div
-          className={`p-2 rounded-lg border w-28 flex items-center justify-center text-sm cursor-pointer ${
+          className={`p-2 rounded-lg border w-30 flex items-center justify-center text-sm cursor-pointer ${
             activeTab === 'loans' ? 'bg-white' : 'bg-gray-100'
           }`}
           onClick={() => setActiveTab('loans')}
@@ -345,14 +479,22 @@ const BorrowerManagement = () => {
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <button
                         type="button"
-                        onClick={() => {
-                          setSelectedBorrower(borrower)
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          openEditBorrower(borrower)
                         }}
                         className="text-gray-600 hover:text-gray-900 mr-3"
                       >
                         <Edit02Icon size={18} />
                       </button>
-                      <button type="button" className="text-red-600 hover:text-red-900">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          openDeleteBorrower(borrower)
+                        }}
+                        className="text-red-600 hover:text-red-900"
+                      >
                         <Delete01Icon size={18} />
                       </button>
                     </td>
@@ -480,36 +622,69 @@ const BorrowerManagement = () => {
                   <h3 className="text-lg font-semibold text-gray-900">Borrowing History</h3>
                 </div>
                 <div className="p-6">
-                  <div className="space-y-4">
-                    {borrowingHistory.map((history) => (
-                      <div key={history.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                        <div className="flex items-center gap-4">
-                          <div className="w-12 h-16 bg-gray-200 rounded flex items-center justify-center">
-                            <BookOpen01Icon size={20} className="text-gray-500" />
+                  {borrowerLoansLoading ? (
+                    <div className="text-sm text-gray-600">Loading active loans...</div>
+                  ) : borrowerActiveLoans.length > 0 ? (
+                    <div className="mb-6">
+                      <h4 className="text-sm font-semibold text-gray-700 mb-3">Active Loans</h4>
+                      <div className="space-y-3">
+                        {borrowerActiveLoans.map((loan) => (
+                          <div key={loan.id} className="flex items-center justify-between p-3 bg-blue-50 rounded-lg border border-blue-200">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-14 bg-gray-200 rounded flex items-center justify-center">
+                                <BookOpen01Icon size={18} className="text-gray-500" />
+                              </div>
+                              <div>
+                                <p className="font-medium text-gray-900 text-sm">{loan.book?.title ?? 'Unknown book'}</p>
+                                <p className="text-xs text-gray-500">{loan.book?.isbn ?? loan.copy_id}</p>
+                                <p className="text-xs text-gray-500 mt-1">Due: {String(loan.due_date).slice(0, 10)}</p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => returnBook(loan.id)}
+                              className="px-3 py-1 bg-green-600 text-white text-xs font-medium rounded hover:bg-green-700 transition"
+                            >
+                              Return Book
+                            </button>
                           </div>
-                          <div>
-                            <p className="font-medium text-gray-900">{history.bookTitle}</p>
-                            <p className="text-sm text-gray-500">{history.bookId}</p>
-                            <div className="flex items-center gap-4 mt-1">
-                              <span className="text-xs text-gray-500">
-                                Borrowed: {history.borrowDate}
-                              </span>
-                              <span className="text-xs text-gray-500">
-                                Due: {history.dueDate}
-                              </span>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-700 mb-3">All History</h4>
+                    <div className="space-y-4">
+                      {borrowingHistory.map((history) => (
+                        <div key={history.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                          <div className="flex items-center gap-4">
+                            <div className="w-12 h-16 bg-gray-200 rounded flex items-center justify-center">
+                              <BookOpen01Icon size={20} className="text-gray-500" />
+                            </div>
+                            <div>
+                              <p className="font-medium text-gray-900">{history.bookTitle}</p>
+                              <p className="text-sm text-gray-500">{history.bookId}</p>
+                              <div className="flex items-center gap-4 mt-1">
+                                <span className="text-xs text-gray-500">
+                                  Borrowed: {history.borrowDate}
+                                </span>
+                                <span className="text-xs text-gray-500">
+                                  Due: {history.dueDate}
+                                </span>
+                              </div>
                             </div>
                           </div>
+                          <div className="text-right">
+                            <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getHistoryStatusColor(history.status)}`}>
+                              {history.status}
+                            </span>
+                            {history.returnDate && (
+                              <p className="text-xs text-gray-500 mt-1">Returned: {history.returnDate}</p>
+                            )}
+                          </div>
                         </div>
-                        <div className="text-right">
-                          <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getHistoryStatusColor(history.status)}`}>
-                            {history.status}
-                          </span>
-                          {history.returnDate && (
-                            <p className="text-xs text-gray-500 mt-1">Returned: {history.returnDate}</p>
-                          )}
-                        </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -569,6 +744,16 @@ const BorrowerManagement = () => {
                   placeholder="Phone"
                   className="w-full h-11 px-3 rounded-lg border border-gray-200 text-sm"
                 />
+                <select
+                  value={registerForm.gender}
+                  onChange={(e) => setRegisterForm((p) => ({ ...p, gender: e.target.value }))}
+                  className="w-full h-11 px-3 rounded-lg border border-gray-200 text-sm"
+                >
+                  <option value="">Select gender (optional)</option>
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                  <option value="other">Other</option>
+                </select>
               </div>
 
               <div className="mt-4 flex justify-end gap-2">
@@ -586,6 +771,156 @@ const BorrowerManagement = () => {
                   className="h-10 px-4 rounded-lg bg-black text-white text-sm"
                 >
                   {saving ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showEditModal ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          onMouseDown={(e) => {
+            if (e.currentTarget === e.target) setShowEditModal(false)
+          }}
+        >
+          <div className="w-full max-w-md rounded-xl bg-white border border-gray-200 overflow-hidden">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">Edit Borrower</h3>
+              <button
+                type="button"
+                className="text-gray-400 hover:text-gray-600"
+                onClick={() => setShowEditModal(false)}
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="p-6">
+              {editError ? <div className="mb-3 text-sm text-red-600">{editError}</div> : null}
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    value={editForm.first_name}
+                    onChange={(e) => setEditForm((p) => ({ ...p, first_name: e.target.value }))}
+                    placeholder="First name"
+                    className="w-full h-11 px-3 rounded-lg border border-gray-200 text-sm"
+                  />
+                  <input
+                    value={editForm.last_name}
+                    onChange={(e) => setEditForm((p) => ({ ...p, last_name: e.target.value }))}
+                    placeholder="Last name"
+                    className="w-full h-11 px-3 rounded-lg border border-gray-200 text-sm"
+                  />
+                </div>
+                <input
+                  value={editForm.email}
+                  onChange={(e) => setEditForm((p) => ({ ...p, email: e.target.value }))}
+                  placeholder="Email"
+                  className="w-full h-11 px-3 rounded-lg border border-gray-200 text-sm"
+                />
+                <input
+                  value={editForm.phone}
+                  onChange={(e) => setEditForm((p) => ({ ...p, phone: e.target.value }))}
+                  placeholder="Phone"
+                  className="w-full h-11 px-3 rounded-lg border border-gray-200 text-sm"
+                />
+                <input
+                  value={editForm.address}
+                  onChange={(e) => setEditForm((p) => ({ ...p, address: e.target.value }))}
+                  placeholder="Address"
+                  className="w-full h-11 px-3 rounded-lg border border-gray-200 text-sm"
+                />
+                <select
+                  value={editForm.gender}
+                  onChange={(e) => setEditForm((p) => ({ ...p, gender: e.target.value }))}
+                  className="w-full h-11 px-3 rounded-lg border border-gray-200 text-sm"
+                >
+                  <option value="">Select gender (optional)</option>
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                  <option value="other">Other</option>
+                </select>
+                <select
+                  value={editForm.status}
+                  onChange={(e) => setEditForm((p) => ({ ...p, status: e.target.value as Borrower['status'] }))}
+                  className="w-full h-11 px-3 rounded-lg border border-gray-200 text-sm"
+                >
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                  <option value="suspended">Suspended</option>
+                </select>
+              </div>
+
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(false)}
+                  className="h-10 px-4 rounded-lg border border-gray-200 text-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={editSaving}
+                  onClick={saveBorrowerEdits}
+                  className="h-10 px-4 rounded-lg bg-black text-white text-sm"
+                >
+                  {editSaving ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showDeleteConfirm ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          onMouseDown={(e) => {
+            if (e.currentTarget === e.target) setShowDeleteConfirm(false)
+          }}
+        >
+          <div className="w-full max-w-md rounded-xl bg-white border border-gray-200 overflow-hidden">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">Delete Borrower</h3>
+              <button
+                type="button"
+                className="text-gray-400 hover:text-gray-600"
+                onClick={() => setShowDeleteConfirm(false)}
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-6">
+              {deleteError ? <div className="mb-3 text-sm text-red-600">{deleteError}</div> : null}
+              <p className="text-sm text-gray-700">
+                Are you sure you want to delete{' '}
+                <span className="font-semibold">
+                  {deletingBorrower ? `${deletingBorrower.first_name} ${deletingBorrower.last_name}` : 'this borrower'}
+                </span>
+                ?
+              </p>
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="h-10 px-4 rounded-lg border border-gray-200 text-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={deleteSaving}
+                  onClick={confirmDeleteBorrower}
+                  className="h-10 px-4 rounded-lg bg-red-600 text-white text-sm"
+                >
+                  {deleteSaving ? 'Deleting...' : 'Delete'}
                 </button>
               </div>
             </div>

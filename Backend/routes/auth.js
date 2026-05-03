@@ -21,10 +21,18 @@ function publicUser(user) {
   }
 }
 
+function displayNameFromEmail(email) {
+  const local = String(email || '').split('@')[0] || 'member'
+  const spaced = local.replace(/[._-]+/g, ' ').trim()
+  if (!spaced) return 'Member'
+  return spaced.replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
 router.post('/signup', async (req, res, next) => {
   try {
-    const name = String(req.body?.name || '').trim()
     const email = normalizeEmail(req.body?.email)
+    let name = String(req.body?.name || '').trim()
+    if (!name && email) name = displayNameFromEmail(email)
     const password = String(req.body?.password || '')
 
     if (!name) return res.status(400).json({ message: 'Name is required' })

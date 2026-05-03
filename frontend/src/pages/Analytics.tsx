@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { Search01Icon, Calendar01Icon, BookOpen01Icon, User03Icon, Analytics01Icon, ArrowDown02Icon, FilterIcon } from "hugeicons-react"
+import { Search01Icon, BookOpen01Icon, User03Icon, Analytics01Icon, ArrowDown02Icon, ArrowUp01Icon, FilterIcon } from "hugeicons-react"
 
 interface AnalyticsData {
   totalBooks: number
@@ -107,7 +107,7 @@ const Analytics = () => {
               <BookOpen01Icon size={24} className="text-blue-600" />
             </div>
             <div className="flex items-center text-green-600 text-sm">
-              <TrendingUpIcon size={16} />
+              <ArrowUp01Icon size={16} />
               <span className="ml-1">+12%</span>
             </div>
           </div>
@@ -121,7 +121,7 @@ const Analytics = () => {
               <User03Icon size={24} className="text-purple-600" />
             </div>
             <div className="flex items-center text-green-600 text-sm">
-              <TrendingUpIcon size={16} />
+              <ArrowUp01Icon size={16} />
               <span className="ml-1">+8%</span>
             </div>
           </div>
@@ -146,10 +146,10 @@ const Analytics = () => {
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <div className="flex items-center justify-between mb-4">
             <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center">
-              <TrendingUpIcon size={24} className="text-red-600" />
+              <ArrowUp01Icon size={24} className="text-red-600" />
             </div>
             <div className="flex items-center text-red-600 text-sm">
-              <TrendingUpIcon size={16} />
+              <ArrowUp01Icon size={16} />
               <span className="ml-1">+5%</span>
             </div>
           </div>

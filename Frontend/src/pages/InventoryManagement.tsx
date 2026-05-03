@@ -2,6 +2,7 @@ import axios from 'axios'
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Search01Icon, Add01Icon, Edit02Icon, Delete01Icon, BookOpen01Icon, Calendar01Icon, Tag01Icon, Package01Icon } from "hugeicons-react"
 import { LIBRARY_GENRES } from '../constants/genres'
+import { api } from '../lib/api'
 
 interface Book {
   id: string
@@ -107,10 +108,6 @@ type CollectionsListResponse = {
   total: number
   totalPages: number
 }
-
-const api = axios.create({
-  baseURL: 'http://localhost:5000',
-})
 
 const emptyBookForm = {
   isbn: '',

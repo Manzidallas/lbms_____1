@@ -1,6 +1,9 @@
 const express = require('express')
+const mongoose = require('mongoose')
 const Borrower = require('../models/Borrower')
 const BorrowerHistory = require('../models/BorrowerHistory')
+const Loan = require('../models/Loan')
+const Book = require('../models/Book')
 
 const router = express.Router()
 
@@ -20,6 +23,15 @@ function normalizeString(v) {
 function normalizeEmail(v) {
   const s = String(v ?? '').trim().toLowerCase()
   return s.length ? s : null
+}
+
+async function resolveBookFromCopyId(copy_id) {
+  const copy = normalizeString(copy_id)
+  if (!copy) return null
+  if (mongoose.Types.ObjectId.isValid(copy)) {
+    return Book.findById(copy)
+  }
+  return Book.findOne({ isbn: copy })
 }
 
 function publicBorrower(b) {
@@ -102,23 +114,19 @@ router.get('/history', async (req, res, next) => {
   try {
     const borrower_id = normalizeString(req.query?.borrower_id)
     const action = normalizeString(req.query?.action)
-
+    const limit = parsePositiveInt(req.query?.limit, 20)
     const page = parsePositiveInt(req.query?.page, 1)
-    const limit = parsePositiveInt(req.query?.limit, 50)
-    const skip = (page - 1) * limit
 
     const filter = {}
     if (borrower_id) filter.borrower_id = borrower_id
-    if (action && ['create', 'update', 'delete'].includes(action)) filter.action = action
+    if (action) filter.action = action
 
-    const [items, total] = await Promise.all([
-      BorrowerHistory.find(filter)
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .populate('borrower_id'),
-      BorrowerHistory.countDocuments(filter),
-    ])
+    const total = await BorrowerHistory.countDocuments(filter)
+    const items = await BorrowerHistory.find(filter)
+      .populate('borrower_id')
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
 
     res.json({
       items: items.map(publicHistory),
@@ -127,6 +135,58 @@ router.get('/history', async (req, res, next) => {
       total,
       totalPages: Math.ceil(total / limit),
     })
+  } catch (err) {
+    next(err)
+  }
+})
+
+router.get('/:id/loans', async (req, res, next) => {
+  try {
+    const borrowerId = req.params.id
+    if (!borrowerId) return res.status(400).json({ message: 'Borrower ID required' })
+
+    const borrower = await Borrower.findById(borrowerId)
+    if (!borrower) return res.status(404).json({ message: 'Borrower not found' })
+
+    const loans = await Loan.find({ borrower_id: borrowerId, return_date: null }).sort({ due_date: 1 })
+
+    const items = await Promise.all(
+      loans.map(async (loan) => {
+        const book = await resolveBookFromCopyId(loan.copy_id)
+        return {
+          ...loan.toJSON(),
+          book: book ? book.toJSON() : null,
+        }
+      })
+    )
+
+    res.json({ items })
+  } catch (err) {
+    next(err)
+  }
+})
+
+router.get('/:id/loans/all', async (req, res, next) => {
+  try {
+    const borrowerId = req.params.id
+    if (!borrowerId) return res.status(400).json({ message: 'Borrower ID required' })
+
+    const borrower = await Borrower.findById(borrowerId)
+    if (!borrower) return res.status(404).json({ message: 'Borrower not found' })
+
+    const loans = await Loan.find({ borrower_id: borrowerId }).sort({ createdAt: -1 })
+
+    const items = await Promise.all(
+      loans.map(async (loan) => {
+        const book = await resolveBookFromCopyId(loan.copy_id)
+        return {
+          ...loan.toJSON(),
+          book: book ? book.toJSON() : null,
+        }
+      })
+    )
+
+    res.json({ items })
   } catch (err) {
     next(err)
   }
@@ -150,6 +210,8 @@ router.post('/', async (req, res, next) => {
     const last_name = normalizeString(req.body?.last_name)
     const email = normalizeEmail(req.body?.email)
     const phone = normalizeString(req.body?.phone)
+    const gender = normalizeString(req.body?.gender)
+    const address = normalizeString(req.body?.address)
 
     if (!first_name) return res.status(400).json({ message: 'first_name is required' })
     if (!last_name) return res.status(400).json({ message: 'last_name is required' })
@@ -164,6 +226,8 @@ router.post('/', async (req, res, next) => {
       email,
       phone,
       membership_id,
+      ...(gender ? { gender } : {}),
+      ...(address ? { address } : {}),
       status: 'active',
     })
 
@@ -196,6 +260,8 @@ router.patch('/:id', async (req, res, next) => {
     if (req.body?.last_name !== undefined) update.last_name = normalizeString(req.body?.last_name)
     if (req.body?.email !== undefined) update.email = normalizeEmail(req.body?.email)
     if (req.body?.phone !== undefined) update.phone = normalizeString(req.body?.phone)
+    if (req.body?.gender !== undefined) update.gender = normalizeString(req.body?.gender)
+    if (req.body?.address !== undefined) update.address = normalizeString(req.body?.address)
     if (req.body?.status !== undefined) update.status = normalizeString(req.body?.status)
 
     const updated = await Borrower.findByIdAndUpdate(id, { $set: update }, { new: true, runValidators: true })

@@ -1,5 +1,11 @@
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom'
-import { useState } from 'react'
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Navigate,
+  useLocation,
+} from 'react-router-dom'
+import { useState, type ReactNode } from 'react'
 import Sidebar from './components/Sidebar'
 import Dashboard from './pages/Dashboard'
 import BookCatalog from './pages/BookCatalog'
@@ -7,6 +13,27 @@ import BorrowerManagement from './pages/BorrowerManagement'
 import InventoryManagement from './pages/InventoryManagement'
 import Analytics from './pages/Analytics'
 import Login from './pages/Login'
+import { AuthProvider, useAuth } from './context/AuthContext'
+import { ToastProvider } from './context/ToastContext'
+
+function ProtectedRoute({ children }: { children: ReactNode }) {
+  const { user, loading } = useAuth()
+  const location = useLocation()
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-50 text-sm text-gray-600">
+        Loading session…
+      </div>
+    )
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />
+  }
+
+  return <>{children}</>
+}
 
 function AppContent() {
   const location = useLocation()
@@ -25,12 +52,54 @@ function AppContent() {
       >
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/books" element={<BookCatalog />} />
-          <Route path="/books/search" element={<BookCatalog />} />
-          <Route path="/borrowers" element={<BorrowerManagement />} />
-          <Route path="/inventory" element={<InventoryManagement />} />
-          <Route path="/analytics" element={<Analytics />} />
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/books"
+            element={
+              <ProtectedRoute>
+                <BookCatalog />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/books/search"
+            element={
+              <ProtectedRoute>
+                <BookCatalog />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/borrowers"
+            element={
+              <ProtectedRoute>
+                <BorrowerManagement />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/inventory"
+            element={
+              <ProtectedRoute>
+                <InventoryManagement />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/analytics"
+            element={
+              <ProtectedRoute>
+                <Analytics />
+              </ProtectedRoute>
+            }
+          />
           <Route path="/login" element={<Login />} />
         </Routes>
       </main>
@@ -41,7 +110,11 @@ function AppContent() {
 function App() {
   return (
     <Router>
-      <AppContent />
+      <ToastProvider>
+        <AuthProvider>
+          <AppContent />
+        </AuthProvider>
+      </ToastProvider>
     </Router>
   )
 }

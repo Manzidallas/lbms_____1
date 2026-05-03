@@ -5,6 +5,7 @@ import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-do
 import { LazyLoadImage } from 'react-lazy-load-image-component'
 import 'react-lazy-load-image-component/src/effects/blur.css'
 import { LIBRARY_GENRES } from '../constants/genres'
+import { api } from '../lib/api'
 
 const popularIsbns = ['9780857197689', '9781847941831','9781612680019', '9780062457714', '1929194013']
 
@@ -68,10 +69,6 @@ type BorrowersListResponse = {
   total: number
   totalPages: number
 }
-
-const api = axios.create({
-  baseURL: 'http://localhost:5000',
-})
 
 const BookCatalog = () => {
   const navigate = useNavigate()

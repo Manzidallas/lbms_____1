@@ -2,13 +2,15 @@ import {
   Analytics02Icon,
   Bookshelf01Icon,
   DashboardSquare01Icon,
+  Logout03Icon,
   Recycle03Icon,
   Search01Icon,
   SidebarLeft01Icon,
   StoreManagement01Icon,
 } from 'hugeicons-react'
 import { useState } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
 
 type SidebarProps = {
   collapsed?: boolean
@@ -17,6 +19,8 @@ type SidebarProps = {
 
 const Sidebar = ({ collapsed: collapsedProp, onCollapsedChange }: SidebarProps) => {
   const location = useLocation()
+  const navigate = useNavigate()
+  const { user, logout } = useAuth()
   const [collapsedInternal, setCollapsedInternal] = useState(false)
   const collapsed = collapsedProp ?? collapsedInternal
   const setCollapsed = (next: boolean | ((prev: boolean) => boolean)) => {
@@ -37,11 +41,12 @@ const Sidebar = ({ collapsed: collapsedProp, onCollapsedChange }: SidebarProps) 
 
   return (
     <div
-      className={`fixed left-0 top-0 z-40 h-screen border-r border-slate-700/10 bg-white p-6 overflow-x-hidden overflow-y-auto transition-[width] duration-300 ease-in-out ${
-        collapsed ? 'w-[100px]' : 'w-80'
+      className={`fixed left-0 top-0 z-40 flex h-screen flex-col border-r border-slate-700/10 bg-white py-6 overflow-x-hidden transition-[width] duration-300 ease-in-out ${
+        collapsed ? 'w-[100px] px-2' : 'w-80 px-6'
       }`}
     >
-      <div className={`flex relative justify-${collapsed ? 'center' : 'between'} items-center mb-4 mt-2 transition-[transform, opacity] duration-300 ease-in-out ${
+      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className={`flex relative ${collapsed ? 'justify-center' : 'justify-between'} items-center mb-4 mt-2 transition-[transform, opacity] duration-300 ease-in-out ${
         collapsed ? 'opacity-100' : 'opacity-100'
       }`}>
         <h2
@@ -55,9 +60,8 @@ const Sidebar = ({ collapsed: collapsedProp, onCollapsedChange }: SidebarProps) 
         <button
           type='button'
           onClick={() => setCollapsed((v) => !v)}
-          className='text-gray-700 transition'
+          className='shrink-0 rounded-lg p-1 text-gray-700 transition hover:bg-gray-100'
           aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          style={{ transform: collapsed ? 'translateX(0%)' : 'translateX(50%)' }}
         >
           <SidebarLeft01Icon />
         </button>
@@ -102,6 +106,30 @@ const Sidebar = ({ collapsed: collapsedProp, onCollapsedChange }: SidebarProps) 
           ))}
         </ul>
       </nav>
+      </div>
+
+      <div className="mt-auto shrink-0 border-t border-gray-200 pt-4">
+        {!collapsed && user ? (
+          <p className="mb-3 truncate px-1 text-xs text-gray-500" title={user.email}>
+            {user.email}
+          </p>
+        ) : null}
+        <button
+          type="button"
+          onClick={async () => {
+            await logout()
+            navigate('/login', { replace: true })
+          }}
+          className={`group flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-md font-medium text-white transition bg-black hover:bg-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2 ${
+            collapsed ? 'justify-center px-3 py-3' : ''
+          }`}
+        >
+          <span className="inline-flex h-5 w-5 items-center justify-center text-white">
+            <Logout03Icon />
+          </span>
+          {!collapsed && <span className="whitespace-nowrap">Log out</span>}
+        </button>
+      </div>
     </div>
   )
 }

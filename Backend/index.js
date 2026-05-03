@@ -10,8 +10,8 @@ const loansRoutes = require('./routes/loans')
 const collectionsRoutes = require('./routes/collections')
 const statsRoutes = require('./routes/stats')
 
-const PORT = process.env.PORT || 5000
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/lbms'
+const PORT = process.env.PORT || 5000 /// uzIyvyzRVDApu8YZ
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://elsie:uzIyvyzRVDApu8YZ@application.nhfetpd.mongodb.net/?appName=application/lbms'
 const SESSION_SECRET = process.env.SESSION_SECRET || 'dev-secret-change-me'
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'http://localhost:5173'
 
