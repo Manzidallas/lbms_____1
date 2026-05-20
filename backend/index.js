@@ -32,12 +32,23 @@ const PORT = process.env.PORT || 5000
 const MONGODB_URI = process.env.MONGODB_URI
 const SESSION_SECRET = process.env.SESSION_SECRET
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'http://localhost:5173'
+const allowedOrigins = [
+  'http://localhost:5173',
+  'https://librarymgtsystem.vercel.app',
+  FRONTEND_ORIGIN
+]
 
 const app = express()
 
 app.use(
   cors({
-    origin: FRONTEND_ORIGIN,
+    origin: function(origin, callback) {
+      if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+        callback(null, true)
+      } else {
+        callback(new Error('Not allowed by CORS'))
+      }
+    },
     credentials: true,
   })
 )
