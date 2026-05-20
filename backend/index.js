@@ -55,6 +55,8 @@ app.use(
 
 app.use(express.json())
 
+app.set('trust proxy', 1)
+
 app.use(
   session({
     name: 'lbms.sid',
@@ -63,8 +65,8 @@ app.use(
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      sameSite: 'lax',
-      secure: false,
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      secure: process.env.NODE_ENV === 'production',
       maxAge: 1000 * 60 * 60 * 24 * 7,
     },
   })
@@ -84,7 +86,7 @@ app.use('/api/stats', statsRoutes)
 app.use((err, req, res, next) => {
   // eslint-disable-next-line no-console
   console.error(err)
-  res.status(500).json({ message: 'Internal server error' })
+  res.status(500).json({ message: 'Internal server error', error: err.message, stack: err.stack })
 })
 
 mongoose
