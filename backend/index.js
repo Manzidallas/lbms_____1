@@ -1,6 +1,7 @@
 const dns = require('dns')
 const express = require('express')
 const mongoose = require('mongoose')
+require('dotenv').config()
 
 // Node on Windows often gets querySrv ECONNREFUSED for mongodb+srv while nslookup works.
 // Override via NODE_DNS_SERVERS=8.8.8.8,1.1.1.1 or set SKIP_WIN_MONGO_DNS_FIX=1 to disable.
@@ -28,8 +29,8 @@ const collectionsRoutes = require('./routes/collections')
 const statsRoutes = require('./routes/stats')
 
 const PORT = process.env.PORT || 5000
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://elsie:itlqZBrHiTsQA3dM@application.nhfetpd.mongodb.net/?appName=application/lbmss'
-const SESSION_SECRET = process.env.SESSION_SECRET || 'dev-secret-change-me'
+const MONGODB_URI = process.env.MONGODB_URI
+const SESSION_SECRET = process.env.SESSION_SECRET
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'http://localhost:5173'
 
 const app = express()
