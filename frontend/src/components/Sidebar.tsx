@@ -36,7 +36,7 @@ const Sidebar = ({ collapsed: collapsedProp, onCollapsedChange }: SidebarProps) 
     { path: '/books', label: 'Book Catalog', icon: <Bookshelf01Icon/> },
     { path: '/borrowers', label: 'Borrower Management', icon: <Recycle03Icon/> },
     { path: '/inventory', label: 'Inventory', icon: <StoreManagement01Icon/> },
-    { path: '/analytics', label: 'Analytics', icon: <Analytics02Icon/> },
+    { path: '/analytics', label: 'Analytics', icon: <Analytics02Icon/>, disabled: true },
   ]
 
   return (
@@ -81,27 +81,47 @@ const Sidebar = ({ collapsed: collapsedProp, onCollapsedChange }: SidebarProps) 
         <ul className="space-y-2">
           {navItems.map((item) => (
             <li key={item.path}>
-              <Link
-                to={item.path}
-                className={`group flex items-center gap-3 rounded-2xl px-4 py-4 text-md transition ${
-                  location.pathname === item.path
-                    ? 'bg-gray-300 text-black'
-                    : 'text-gray-500 hover:bg-gray-300 hover:text-white'
-                } ${
-                  collapsed ? 'justify-center px-6 py-2' : ''
-                }`}
-              >
-                <span
-                  className={`inline-flex h-5 w-5 items-center justify-center ${
-                    location.pathname === item.path
-                      ? 'text-black '
-                      : 'text-gray-500 group-hover:text-white'
+              {item.disabled ? (
+                <div
+                  className={`group flex items-center gap-3 rounded-2xl px-4 py-4 text-md transition text-gray-400 cursor-not-allowed ${
+                    collapsed ? 'justify-center px-6 py-2' : ''
                   }`}
                 >
-                  {item.icon}
-                </span>
-                {!collapsed && <span className='whitespace-nowrap'>{item.label}</span>}
-              </Link>
+                  <span className="inline-flex h-5 w-5 items-center justify-center text-gray-400">
+                    {item.icon}
+                  </span>
+                  {!collapsed && (
+                    <div className="flex items-center gap-2">
+                      <span className="whitespace-nowrap">{item.label}</span>
+                      <div className="bg-black text-white text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap">
+                        Coming soon
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <Link
+                  to={item.path}
+                  className={`group flex items-center gap-3 rounded-2xl px-4 py-4 text-md transition ${
+                    location.pathname === item.path
+                      ? 'bg-gray-300 text-black'
+                      : 'text-gray-500 hover:bg-gray-300 hover:text-white'
+                  } ${
+                    collapsed ? 'justify-center px-6 py-2' : ''
+                  }`}
+                >
+                  <span
+                    className={`inline-flex h-5 w-5 items-center justify-center ${
+                      location.pathname === item.path
+                        ? 'text-black '
+                        : 'text-gray-500 group-hover:text-white'
+                    }`}
+                  >
+                    {item.icon}
+                  </span>
+                  {!collapsed && <span className='whitespace-nowrap'>{item.label}</span>}
+                </Link>
+              )}
             </li>
           ))}
         </ul>
